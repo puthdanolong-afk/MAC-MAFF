@@ -1,0 +1,7 @@
+{
+  "name": "ប្រព័ន្ធគ្រប់គ្រងសហគមន៍កសិកម្មទំនើប",
+  "description": "A comprehensive management system for Agricultural Communities, including member databases, cropping calendars, store platforms, loan management, and accounting.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}

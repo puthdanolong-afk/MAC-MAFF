@@ -1,0 +1,134 @@
+{
+  "entities": {
+    "Member": {
+      "title": "Member",
+      "description": "Agricultural Community Member",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "contact": { "type": "string" },
+        "address": { "type": "string" },
+        "cropType": { "type": "string" },
+        "plantingDate": { "type": "string", "format": "date" },
+        "estimatedHarvestDate": { "type": "string", "format": "date" },
+        "soilType": { "type": "string" },
+        "activities": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "date": { "type": "string", "format": "date" },
+              "type": { "type": "string" },
+              "description": { "type": "string" },
+              "cost": { "type": "number" }
+            }
+          }
+        },
+        "joinedAt": { "type": "string", "format": "date-time" },
+        "status": {
+          "type": "string",
+          "enum": ["active", "inactive", "pending"]
+        },
+        "location": {
+          "type": "object",
+          "properties": {
+            "lat": { "type": "number" },
+            "lng": { "type": "number" }
+          }
+        },
+        "productionArea": {
+          "type": "object",
+          "properties": {
+            "type": { "type": "string", "enum": ["Feature"] },
+            "geometry": {
+              "type": "object",
+              "properties": {
+                "type": { "type": "string", "enum": ["Polygon"] },
+                "coordinates": { "type": "array" }
+              }
+            },
+            "properties": {
+              "type": "object",
+              "properties": {
+                "area_sqm": { "type": "number" },
+                "cropType": { "type": "string" },
+                "plantingDate": { "type": "string", "format": "date" },
+                "estimatedHarvestDate": { "type": "string", "format": "date" },
+                "soilType": { "type": "string" }
+              }
+            }
+          }
+        }
+      },
+      "required": ["name", "contact"]
+    },
+    "CropActivity": {
+      "title": "Crop Activity",
+      "description": "Agricultural production tracking",
+      "type": "object",
+      "properties": {
+        "memberId": { "type": "string" },
+        "cropType": { "type": "string" },
+        "startDate": { "type": "string", "format": "date" },
+        "status": { "type": "string", "enum": ["active", "completed", "planned"] }
+      },
+      "required": ["memberId", "cropType", "startDate", "status"]
+    },
+    "Product": {
+      "title": "Product",
+      "description": "AC Marketing Product",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "price": { "type": "number" },
+        "stock": { "type": "number" },
+        "imageUrl": { "type": "string", "format": "uri" }
+      },
+      "required": ["name", "price", "stock"]
+    },
+    "Loan": {
+      "title": "Loan",
+      "description": "Member Loan Management",
+      "type": "object",
+      "properties": {
+        "memberId": { "type": "string" },
+        "amount": { "type": "number" },
+        "status": { "type": "string", "enum": ["pending", "approved", "active", "repaid", "defaulted"] }
+      },
+      "required": ["memberId", "amount", "status"]
+    },
+    "Transaction": {
+      "title": "Transaction",
+      "description": "Financial Transaction",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "enum": ["income", "expense", "deposit", "withdrawal"] },
+        "amount": { "type": "number" },
+        "date": { "type": "string", "format": "date-time" }
+      },
+      "required": ["type", "amount", "date"]
+    },
+    "Sale": {
+      "title": "Sale",
+      "description": "Product Sale Record",
+      "type": "object",
+      "properties": {
+        "productId": { "type": "string" },
+        "buyerName": { "type": "string" },
+        "quantity": { "type": "number" },
+        "totalAmount": { "type": "number" },
+        "date": { "type": "string", "format": "date-time" }
+      },
+      "required": ["productId", "buyerName", "quantity", "totalAmount", "date"]
+    }
+  },
+  "firestore": {
+    "/members": { "schema": "Member", "description": "AC Members" },
+    "/cropActivities": { "schema": "CropActivity", "description": "Production tracking" },
+    "/products": { "schema": "Product", "description": "Marketing products" },
+    "/loans": { "schema": "Loan", "description": "Member loans" },
+    "/transactions": { "schema": "Transaction", "description": "Financial records" },
+    "/sales": { "schema": "Sale", "description": "Sales records" }
+  }
+}

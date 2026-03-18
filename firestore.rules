@@ -1,0 +1,253 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: members
+    // Document ID: memberId
+    // Fields:
+    //   - name: string (required, 1-100 chars)
+    //   - contact: string (required, 1-50 chars)
+    //   - address: string (required, 1-500 chars)
+    //   - joinedAt: string (required, ISO 8601)
+    //   - crops: list (required, max 50 items)
+    //   - uid: string (required, owner UID)
+    //
+    // Collection: cropActivities
+    // Document ID: activityId
+    // Fields:
+    //   - memberId: string (required)
+    //   - cropType: string (required, 1-100 chars)
+    //   - startDate: string (required, YYYY-MM-DD)
+    //   - status: string (required, enum: active, completed, planned)
+    //   - estimatedYield: number (required, non-negative)
+    //   - uid: string (required, owner UID)
+    //
+    // Collection: products
+    // Document ID: productId
+    // Fields:
+    //   - name: string (required, 1-100 chars)
+    //   - price: number (required, positive)
+    //   - stock: number (required, non-negative)
+    //   - category: string (required, 1-50 chars)
+    //   - uid: string (required, creator UID)
+    //
+    // Collection: loans
+    // Document ID: loanId
+    // Fields:
+    //   - memberId: string (required)
+    //   - amount: number (required, positive)
+    //   - status: string (required, enum: pending, approved, active, repaid, defaulted)
+    //   - uid: string (required, owner UID)
+    //
+    // Collection: transactions
+    // Document ID: transactionId
+    // Fields:
+    //   - type: string (required, enum: income, expense, deposit, withdrawal)
+    //   - amount: number (required, positive)
+    //   - date: string (required, ISO 8601)
+    //   - description: string (required, 1-200 chars)
+    //   - category: string (required, 1-50 chars)
+    //   - uid: string (required, owner UID)
+    //
+    // Collection: sales
+    // Document ID: saleId
+    // Fields:
+    //   - productId: string (required)
+    //   - buyerName: string (required, 1-100 chars)
+    //   - quantity: number (required, positive)
+    //   - totalAmount: number (required, positive)
+    //   - date: string (required, ISO 8601)
+    //   - uid: string (required, owner UID)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function isDocOwner() {
+      return isAuthenticated() && request.auth.uid == resource.data.uid;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && 
+        ((request.auth.token.email == "puthdano.aero@gmail.com" && request.auth.token.email_verified == true) ||
+         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'));
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isValidDateString(dateStr) {
+      return dateStr is string && dateStr.matches("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}.*Z?$");
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidMember(data) {
+      return hasRequiredFields(['name', 'contact', 'address', 'joinedAt', 'crops', 'uid', 'status']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+             data.contact is string && data.contact.size() > 0 && data.contact.size() <= 50 &&
+             data.address is string && data.address.size() > 0 && data.address.size() <= 500 &&
+             data.status in ['active', 'inactive', 'pending'] &&
+             (!('cropType' in data) || data.cropType is string) &&
+             (!('plantingDate' in data) || data.plantingDate is string) &&
+             (!('estimatedHarvestDate' in data) || data.estimatedHarvestDate is string) &&
+             (!('soilType' in data) || data.soilType is string) &&
+             (!('activities' in data) || (
+               data.activities is list &&
+               data.activities.size() <= 100 &&
+               data.activities.all(a, 
+                 a is map && 
+                 a.id is string && 
+                 a.date is string && 
+                 a.type is string && 
+                 a.description is string && 
+                 a.cost is number
+               )
+             )) &&
+             data.joinedAt is string &&
+             data.crops is list && data.crops.size() <= 50 &&
+             (!('productionArea' in data) || (
+               data.productionArea is map &&
+               data.productionArea.type == 'Feature' &&
+               data.productionArea.geometry is map &&
+               data.productionArea.geometry.type == 'Polygon' &&
+               data.productionArea.geometry.coordinates is list &&
+               data.productionArea.geometry.coordinates.size() <= 10 &&
+               data.productionArea.properties is map &&
+               (!('cropType' in data.productionArea.properties) || data.productionArea.properties.cropType is string) &&
+               (!('plantingDate' in data.productionArea.properties) || data.productionArea.properties.plantingDate is string) &&
+               (!('estimatedHarvestDate' in data.productionArea.properties) || data.productionArea.properties.estimatedHarvestDate is string) &&
+               (!('soilType' in data.productionArea.properties) || data.productionArea.properties.soilType is string)
+             ));
+    }
+
+    function isValidCropActivity(data) {
+      return hasRequiredFields(['memberId', 'cropType', 'startDate', 'status', 'estimatedYield', 'uid']) &&
+             data.cropType is string && data.cropType.size() > 0 && data.cropType.size() <= 100 &&
+             data.status in ['active', 'completed', 'planned'] &&
+             data.estimatedYield is number && data.estimatedYield >= 0;
+    }
+
+    function isValidProduct(data) {
+      return hasRequiredFields(['name', 'price', 'stock', 'category', 'uid']) &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+             data.price is number && data.price > 0 &&
+             data.stock is number && data.stock >= 0 &&
+             data.category is string && data.category.size() > 0 && data.category.size() <= 50 &&
+             (!('imageUrl' in data) || (data.imageUrl is string && data.imageUrl.size() <= 1000));
+    }
+
+    function isValidLoan(data) {
+      return hasRequiredFields(['memberId', 'amount', 'status', 'uid', 'interestRate', 'termMonths', 'startDate', 'payments']) &&
+             data.amount is number && data.amount > 0 &&
+             data.status in ['pending', 'approved', 'active', 'repaid', 'defaulted'] &&
+             data.interestRate is number && data.interestRate >= 0 &&
+             data.termMonths is number && data.termMonths > 0 &&
+             data.startDate is string &&
+             data.payments is list &&
+             data.payments.size() <= 100 &&
+             data.payments.all(p, 
+               p is map && 
+               p.date is string && 
+               p.amount is number && 
+               p.principal is number && 
+               p.interest is number
+             );
+    }
+
+    function isValidTransaction(data) {
+      return hasRequiredFields(['type', 'amount', 'date', 'description', 'category', 'uid']) &&
+             data.type in ['income', 'expense', 'deposit', 'withdrawal'] &&
+             data.amount is number && data.amount > 0 &&
+             data.description is string && data.description.size() > 0 && data.description.size() <= 200 &&
+             data.category is string && data.category.size() > 0 && data.category.size() <= 50;
+    }
+
+    function isValidSale(data) {
+      return hasRequiredFields(['productId', 'buyerName', 'quantity', 'totalAmount', 'date', 'uid']) &&
+             data.productId is string &&
+             data.buyerName is string && data.buyerName.size() > 0 && data.buyerName.size() <= 100 &&
+             data.quantity is number && data.quantity > 0 &&
+             data.totalAmount is number && data.totalAmount > 0 &&
+             data.date is string;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create, update: if isOwner(userId) && hasOnlyAllowedFields(['name', 'email', 'role', 'photoURL']) && 
+                            (request.resource.data.role == 'user' || isAdmin());
+    }
+
+    match /members/{memberId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidMember(request.resource.data) && request.resource.data.uid == request.auth.uid;
+      allow update: if (isDocOwner() || isAdmin()) && isValidMember(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /cropActivities/{activityId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidCropActivity(request.resource.data) && request.resource.data.uid == request.auth.uid;
+      allow update: if (isDocOwner() || isAdmin()) && isValidCropActivity(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /products/{productId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidProduct(request.resource.data) && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if isDocOwner() || isAdmin();
+    }
+
+    match /loans/{loanId} {
+      allow read: if isDocOwner() || isAdmin();
+      allow create: if isAuthenticated() && isValidLoan(request.resource.data) && request.resource.data.uid == request.auth.uid;
+      allow update: if isAdmin() && isValidLoan(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /transactions/{transactionId} {
+      allow read: if isDocOwner() || isAdmin();
+      allow create: if isAuthenticated() && isValidTransaction(request.resource.data) && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+
+    match /sales/{saleId} {
+      allow read: if isDocOwner() || isAdmin();
+      allow create: if isAuthenticated() && isValidSale(request.resource.data) && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+
+    match /test/connection {
+      allow read: if true;
+    }
+  }
+}
